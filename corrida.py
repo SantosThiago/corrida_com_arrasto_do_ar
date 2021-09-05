@@ -1,42 +1,71 @@
 #Thiago dos Santos
 #Thiago Bulhosa
+#Pablo Montel
 
-from sympy import Lambda,var,sqrt
-from scipy.integrate import quad
-from numpy import inf, linspace
+from scipy.interpolate import interp1d
+import numpy as np
 import matplotlib.pyplot as plt
+from runner_data import get_runner_data as grd
+from scipy.optimize import minimize
+from sympy import limit
 
-x=var("x")
-o1=0.32
-o2=0.296
-space=linspace(0.15,0.45,100)
-H01=68.7
-H02=66.9
-Tempo1=[]
-Tempo2=[]
+def v_of_t(a0, b, t):
+    tan = np.tanh(np.sqrt(a0) * np.sqrt(b) * t)
+    return (tan / np.sqrt(b / a0))
 
-E1=Lambda(x,sqrt(o1*(1+x)**3+1-o1))
-E2=Lambda(x,sqrt(o2*(1+x)**3+1-o2))
-f1=Lambda(x,1/((1+x)*E1(x)))
-f2=Lambda(x,1/((1+x)*E2(x)))
-integral_E1 = quad(f1,0,inf)
-integral_E2 = quad(f2,0,inf)
-T1 = (1 / H01) * integral_E1[0]
-T2 = (1 / H02) * integral_E2[0]
+def x_of_t(a0, b, t):
+    return np.log(np.cosh(t * np.sqrt(a0 * b))) / b
 
-print("A variação da idade do universo é entre",T1,"e",T2,"giga-anos.")
-print("\n\n")
+def t_of_x(a0, b, x):
+    tx = np.linspace(0, 100, 1000)
+    xt = x_of_t(a0, b, tx)
+    spl = interp1d(xt, tx, kind='cubic', assume_sorted=True)
+    return spl(x)
 
-for o in space:
-    E=Lambda(x,sqrt(o*(1+x)**3+1-o))
-    f=Lambda(x,1/((1+x)*E(x)))
-    integral_E=quad(f,0,inf)
-    Temp1=(1/H01)*integral_E[0]
-    Temp2=(1/H02) *integral_E[0]
-    Tempo1.append(Temp1)
-    Tempo2.append(Temp2)
+def chi2(p, tobs, xobs):
+    a0 = p[0]
+    b = p[1]
+    t_model = t_of_x(a0, b, xobs)
+    dy2 = (tobs - t_model) ** 2
+    return dy2.sum()
 
-plt.plot(space,Tempo1,"blue",label="obj1")
-plt.plot(space,Tempo2,"red",label="obj1")
+a0 = 8.5
+p = 1.2
+cd = 0.5
+a=1
+massa = 80
+B = (1 / (2 * massa)) * p * cd * a
+t = np.linspace(0, 10, 1000)
+v = v_of_t(a0, B, t)
+x = x_of_t(a0, B, t)
 
+plt.figure(1)
+plt.title("Velocidade v(t)")
+plt.plot(t, v, '-b')
+plt.figure(2)
+plt.title("Posição x(t)")
+plt.plot(t, x, '-r')
 plt.show()
+
+for i in range(3):
+    corredor = grd()
+    m = minimize(chi2, x0=[a0, B], args=(corredor[1], corredor[0]), method='Nelder-Mead', tol=1.e-8)
+    print(f'Corredor {i + 1}')
+    print(f'a0  = {m.x[0]:.2f} m/s2.')
+    print(f'B = {m.x[1]:.2f}')
+
+    t = np.linspace(0, 10, 1000)
+    xmin = x_of_t(m.x[0], m.x[1], t)
+    vmin = v_of_t(m.x[0],m.x[1],t)
+    limite = limit(v,t,np.inf)
+    print("Velocidade máxima do corredor:",vmin.max())
+    print("Limite da velocidade:",max(limite))
+
+    A = (m.x[1] * 2 * 80 / 1.2) * 0.5
+    print("Seção reta  da área do corpo do atleta=",A)
+
+    plt.figure(3)
+    plt.plot(t, vmin)
+    plt.figure(4)
+    plt.plot(t, xmin,"-r")
+    plt.show()
